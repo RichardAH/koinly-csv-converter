@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSV Converter with Quarter Selection</title>
+    <title>CSV Converter with Timezone and Quarter Selection</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment-timezone/0.5.33/moment-timezone-with-data.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -16,7 +18,7 @@
         h1, h2 {
             color: #333;
         }
-        #fileInput, #quarterSelect {
+        #fileInput, #quarterSelect, #timezoneSelect {
             margin-bottom: 20px;
         }
         #convertBtn, #downloadBtn {
@@ -46,7 +48,11 @@
     </style>
 </head>
 <body>
-    <h1>CSV Converter with Quarter Selection</h1>
+    <h1>CSV Converter with Timezone and Quarter Selection</h1>
+    <div>
+        <label for="timezoneSelect">Select Timezone:</label>
+        <select id="timezoneSelect"></select>
+    </div>
     <input type="file" id="fileInput" accept=".csv">
     <select id="quarterSelect"></select>
     <button id="convertBtn">Convert CSV</button>
@@ -59,37 +65,58 @@
         let originalFilename = '';
         const quarterSelect = document.getElementById('quarterSelect');
         const fileInput = document.getElementById('fileInput');
+        const timezoneSelect = document.getElementById('timezoneSelect');
 
-        // Corrected function to get the most recent past quarter
-        function getMostRecentPastQuarter() {
-            const now = new Date();
-            const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth(); // 0-11
+        // Populate timezone options
+        const commonTimezones = [
+            "Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane", "Australia/Adelaide", 
+            "Australia/Perth", "Australia/Darwin", "Australia/Hobart", 
+            "Pacific/Auckland", "Asia/Tokyo", "Asia/Singapore", "Europe/London", "America/New_York", 
+            "America/Los_Angeles", "UTC"
+        ];
 
-            // Determine the current quarter (0-3)
-            const currentQuarter = Math.floor(currentMonth / 3);
+        commonTimezones.forEach(tz => {
+            const option = document.createElement('option');
+            option.value = tz;
+            option.textContent = tz;
+            timezoneSelect.appendChild(option);
+        });
 
-            // The most recent past quarter is the previous quarter
-            const pastQuarter = (currentQuarter + 3) % 4; // Wraps around to 3 if currentQuarter is 0
-            const pastQuarterYear = pastQuarter === 3 && currentQuarter === 0 ? currentYear - 1 : currentYear;
+        // Set default timezone to Australia/Sydney (AEST)
+        timezoneSelect.value = "Australia/Sydney";
 
-            return `${pastQuarterYear}-Q${pastQuarter + 1}`; // Add 1 because quarters are typically numbered 1-4
+        function getMostRecentPastQuarter(timezone) {
+            const now = moment().tz(timezone);
+            const currentYear = now.year();
+            const currentQuarter = now.quarter();
+            
+            const pastQuarter = currentQuarter === 1 ? 4 : currentQuarter - 1;
+            const pastQuarterYear = currentQuarter === 1 ? currentYear - 1 : currentYear;
+
+            return `${pastQuarterYear}-Q${pastQuarter}`;
         }
 
-        // Populate quarter options
-        const currentYear = new Date().getFullYear();
-        for (let year = 2020; year <= currentYear; year++) {
-            for (let quarter = 1; quarter <= 4; quarter++) {
-                const option = document.createElement('option');
-                option.value = `${year}-Q${quarter}`;
-                option.textContent = `Q${quarter} ${year}`;
-                quarterSelect.appendChild(option);
+        function updateQuarterOptions() {
+            quarterSelect.innerHTML = ''; // Clear existing options
+            const currentYear = moment().tz(timezoneSelect.value).year();
+            for (let year = 2020; year <= currentYear; year++) {
+                for (let quarter = 1; quarter <= 4; quarter++) {
+                    const option = document.createElement('option');
+                    option.value = `${year}-Q${quarter}`;
+                    option.textContent = `Q${quarter} ${year}`;
+                    quarterSelect.appendChild(option);
+                }
             }
+            // Set the default selected quarter
+            const defaultQuarter = getMostRecentPastQuarter(timezoneSelect.value);
+            quarterSelect.value = defaultQuarter;
         }
 
-        // Set the default selected quarter
-        const defaultQuarter = getMostRecentPastQuarter();
-        quarterSelect.value = defaultQuarter;
+        // Initial population of quarter options
+        updateQuarterOptions();
+
+        // Update quarter options when timezone changes
+        timezoneSelect.addEventListener('change', updateQuarterOptions);
 
         // Store the original filename when a file is selected
         fileInput.addEventListener('change', function(e) {
@@ -99,10 +126,11 @@
         document.getElementById('convertBtn').addEventListener('click', function() {
             const file = fileInput.files[0];
             const selectedQuarter = quarterSelect.value;
+            const selectedTimezone = timezoneSelect.value;
             if (file && selectedQuarter) {
                 Papa.parse(file, {
                     complete: function(results) {
-                        convertedCsvContent = convertCSV(results.data, selectedQuarter);
+                        convertedCsvContent = convertCSV(results.data, selectedQuarter, selectedTimezone);
                         document.getElementById('output').textContent = convertedCsvContent;
                         document.getElementById('downloadBtn').style.display = 'inline-block';
                     }
@@ -121,19 +149,18 @@
             }
         });
 
-        function convertCSV(data, selectedQuarter) {
-            const [year, quarter] = selectedQuarter.split('-');
-            const quarterStartMonth = (parseInt(quarter.slice(1)) - 1) * 3;
-            const startDate = new Date(parseInt(year), quarterStartMonth, 1);
-            const endDate = new Date(parseInt(year), quarterStartMonth + 3, 0);
+        function convertCSV(data, selectedQuarter, timezone) {
+            const [year, quarter] = selectedQuarter.split('-Q').map(Number);
+            const startDate = moment.tz(`${year}-${(quarter - 1) * 3 + 1}-01 00:00:00`, timezone);
+            const endDate = moment.tz(`${year}-${quarter * 3}-${quarter === 2 ? '30' : '31'} 23:59:59`, timezone);
 
             const convertedRows = data
                 .filter(row => row.length >= 9)
                 .map(row => {
-                    const timestamp = new Date(row[3]);
-                    if (timestamp < startDate || timestamp > endDate) return null;
+                    const timestamp = moment.tz(row[3], timezone);
+                    if (timestamp.isBefore(startDate) || timestamp.isAfter(endDate)) return null;
 
-                    const formattedDate = `${timestamp.getUTCFullYear()}-${String(timestamp.getUTCMonth() + 1).padStart(2, '0')}-${String(timestamp.getUTCDate()).padStart(2, '0')} ${String(timestamp.getUTCHours()).padStart(2, '0')}:${String(timestamp.getUTCMinutes()).padStart(2, '0')} UTC`;
+                    const formattedDate = timestamp.utc().format("YYYY-MM-DD HH:mm [UTC]");
                     
                     let amount = parseFloat(row[5]);
                     if (row[2] === 'sent') {
