@@ -48,9 +48,7 @@
 <body>
     <h1>CSV Converter with Quarter Selection</h1>
     <input type="file" id="fileInput" accept=".csv">
-    <select id="quarterSelect">
-        <option value="">Select Quarter</option>
-    </select>
+    <select id="quarterSelect"></select>
     <button id="convertBtn">Convert CSV</button>
     <button id="downloadBtn">Download Converted CSV</button>
     <h2>Converted CSV Preview:</h2>
@@ -60,8 +58,26 @@
         let convertedCsvContent = '';
         const quarterSelect = document.getElementById('quarterSelect');
 
+        // Function to get the most recent past quarter
+        function getMostRecentPastQuarter() {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const currentMonth = now.getMonth();
+            const currentQuarter = Math.floor(currentMonth / 3);
+            
+            // If we're in the first month of a quarter, return the previous quarter
+            if (currentMonth % 3 === 0) {
+                return currentQuarter === 0 
+                    ? `${currentYear - 1}-Q4` 
+                    : `${currentYear}-Q${currentQuarter}`;
+            } else {
+                return `${currentYear}-Q${currentQuarter + 1}`;
+            }
+        }
+
         // Populate quarter options
-        for (let year = 2020; year <= 2025; year++) {
+        const currentYear = new Date().getFullYear();
+        for (let year = 2020; year <= currentYear; year++) {
             for (let quarter = 1; quarter <= 4; quarter++) {
                 const option = document.createElement('option');
                 option.value = `${year}-Q${quarter}`;
@@ -69,6 +85,10 @@
                 quarterSelect.appendChild(option);
             }
         }
+
+        // Set the default selected quarter
+        const defaultQuarter = getMostRecentPastQuarter();
+        quarterSelect.value = defaultQuarter;
 
         document.getElementById('convertBtn').addEventListener('click', function() {
             const fileInput = document.getElementById('fileInput');
