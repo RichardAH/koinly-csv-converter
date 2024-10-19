@@ -56,23 +56,24 @@
 
     <script>
         let convertedCsvContent = '';
+        let originalFilename = '';
         const quarterSelect = document.getElementById('quarterSelect');
+        const fileInput = document.getElementById('fileInput');
 
-        // Function to get the most recent past quarter
+        // Corrected function to get the most recent past quarter
         function getMostRecentPastQuarter() {
             const now = new Date();
             const currentYear = now.getFullYear();
-            const currentMonth = now.getMonth();
+            const currentMonth = now.getMonth(); // 0-11
+
+            // Determine the current quarter (0-3)
             const currentQuarter = Math.floor(currentMonth / 3);
-            
-            // If we're in the first month of a quarter, return the previous quarter
-            if (currentMonth % 3 === 0) {
-                return currentQuarter === 0 
-                    ? `${currentYear - 1}-Q4` 
-                    : `${currentYear}-Q${currentQuarter}`;
-            } else {
-                return `${currentYear}-Q${currentQuarter + 1}`;
-            }
+
+            // The most recent past quarter is the previous quarter
+            const pastQuarter = (currentQuarter + 3) % 4; // Wraps around to 3 if currentQuarter is 0
+            const pastQuarterYear = pastQuarter === 3 && currentQuarter === 0 ? currentYear - 1 : currentYear;
+
+            return `${pastQuarterYear}-Q${pastQuarter + 1}`; // Add 1 because quarters are typically numbered 1-4
         }
 
         // Populate quarter options
@@ -90,8 +91,12 @@
         const defaultQuarter = getMostRecentPastQuarter();
         quarterSelect.value = defaultQuarter;
 
+        // Store the original filename when a file is selected
+        fileInput.addEventListener('change', function(e) {
+            originalFilename = e.target.files[0].name.split('.')[0]; // Remove file extension
+        });
+
         document.getElementById('convertBtn').addEventListener('click', function() {
-            const fileInput = document.getElementById('fileInput');
             const file = fileInput.files[0];
             const selectedQuarter = quarterSelect.value;
             if (file && selectedQuarter) {
@@ -109,7 +114,8 @@
 
         document.getElementById('downloadBtn').addEventListener('click', function() {
             if (convertedCsvContent) {
-                downloadCSV(convertedCsvContent, `converted_${quarterSelect.value}.csv`);
+                const filename = `${originalFilename}_koinly_${quarterSelect.value}.csv`;
+                downloadCSV(convertedCsvContent, filename);
             } else {
                 alert('Please convert a CSV file first.');
             }
