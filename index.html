@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Converter with Quarter Selection</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        #fileInput, #quarterSelect {
+            margin-bottom: 20px;
+        }
+        #convertBtn, #downloadBtn {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 15px 32px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+        }
+        #downloadBtn {
+            background-color: #008CBA;
+            display: none;
+        }
+        #output {
+            white-space: pre-wrap;
+            background-color: #f4f4f4;
+            padding: 10px;
+            border: 1px solid #ddd;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>CSV Converter with Quarter Selection</h1>
+    <input type="file" id="fileInput" accept=".csv">
+    <select id="quarterSelect">
+        <option value="">Select Quarter</option>
+    </select>
+    <button id="convertBtn">Convert CSV</button>
+    <button id="downloadBtn">Download Converted CSV</button>
+    <h2>Converted CSV Preview:</h2>
+    <pre id="output"></pre>
+
+    <script>
+        let convertedCsvContent = '';
+        const quarterSelect = document.getElementById('quarterSelect');
+
+        // Populate quarter options
+        for (let year = 2020; year <= 2025; year++) {
+            for (let quarter = 1; quarter <= 4; quarter++) {
+                const option = document.createElement('option');
+                option.value = `${year}-Q${quarter}`;
+                option.textContent = `Q${quarter} ${year}`;
+                quarterSelect.appendChild(option);
+            }
+        }
+
+        document.getElementById('convertBtn').addEventListener('click', function() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const selectedQuarter = quarterSelect.value;
+            if (file && selectedQuarter) {
+                Papa.parse(file, {
+                    complete: function(results) {
+                        convertedCsvContent = convertCSV(results.data, selectedQuarter);
+                        document.getElementById('output').textContent = convertedCsvContent;
+                        document.getElementById('downloadBtn').style.display = 'inline-block';
+                    }
+                });
+            } else {
+                alert('Please select a file and a quarter.');
+            }
+        });
+
+        document.getElementById('downloadBtn').addEventListener('click', function() {
+            if (convertedCsvContent) {
+                downloadCSV(convertedCsvContent, `converted_${quarterSelect.value}.csv`);
+            } else {
+                alert('Please convert a CSV file first.');
+            }
+        });
+
+        function convertCSV(data, selectedQuarter) {
+            const [year, quarter] = selectedQuarter.split('-');
+            const quarterStartMonth = (parseInt(quarter.slice(1)) - 1) * 3;
+            const startDate = new Date(parseInt(year), quarterStartMonth, 1);
+            const endDate = new Date(parseInt(year), quarterStartMonth + 3, 0);
+
+            const convertedRows = data
+                .filter(row => row.length >= 9)
+                .map(row => {
+                    const timestamp = new Date(row[3]);
+                    if (timestamp < startDate || timestamp > endDate) return null;
+
+                    const formattedDate = `${timestamp.getUTCFullYear()}-${String(timestamp.getUTCMonth() + 1).padStart(2, '0')}-${String(timestamp.getUTCDate()).padStart(2, '0')} ${String(timestamp.getUTCHours()).padStart(2, '0')}:${String(timestamp.getUTCMinutes()).padStart(2, '0')} UTC`;
+                    
+                    let amount = parseFloat(row[5]);
+                    if (row[2] === 'sent') {
+                        amount = -Math.abs(amount);
+                    }
+
+                    let currency = row[4].includes('.') ? row[4].split('.')[1] : row[4];
+                    if (currency === 'rEvernodee8dJLaFsujS6q1EiXvZYmHXr8') {
+                        currency = 'EVR';
+                    }
+
+                    const txHash = row[8];
+
+                    return `${formattedDate},${amount},${currency},,${txHash}`;
+                })
+                .filter(row => row !== null);
+
+            return 'Koinly Date,Amount,Currency,Label,TxHash\n' + convertedRows.join('\n');
+        }
+
+        function downloadCSV(csvContent, filename) {
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        }
+    </script>
+</body>
+</html>
